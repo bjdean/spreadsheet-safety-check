@@ -134,22 +134,7 @@ Items removed/highlighted: 2
 
 ## Detected Patterns
 
-The tool looks for:
-
-### VBA Macros
-- All VBA code in macro-enabled files (.xlsm)
-- Analyzes each module separately
-
-### Suspicious Formulas
-- HYPERLINK - Can link to external resources
-- WEBSERVICE - Makes HTTP requests
-- FILTERXML - Can parse external XML
-- IMPORTDATA - Imports external data
-- CALL - Calls external functions
-- REGISTER - Registers external functions
-- EXEC - Executes commands
-- SHELL - Executes shell commands
-- INDIRECT - Dynamic cell references
+The tool finds all formulas and VBA code and passes them to Claude Code SDK to check and score.
 
 ## Security Considerations
 
