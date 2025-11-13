@@ -1,0 +1,13 @@
+# Macro Checker Dependencies
+
+# Claude SDK for AI-powered macro analysis
+claude-agent-sdk
+
+# Excel file handling
+openpyxl
+
+# VBA macro extraction (optional but recommended)
+oletools
+
+# Async runtime
+anyio
