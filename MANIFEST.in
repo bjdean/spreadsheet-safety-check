@@ -1,0 +1,20 @@
+# Include important metadata files
+include LICENSE
+include README.md
+include CHANGELOG.md
+include pyproject.toml
+
+# Include requirements file for reference
+include requirements.txt
+
+# Include type information
+include src/spreadsheet_safety_check/py.typed
+
+# Exclude test files and development artifacts
+exclude .gitignore
+exclude .github
+recursive-exclude tests *
+recursive-exclude .github *
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * .DS_Store

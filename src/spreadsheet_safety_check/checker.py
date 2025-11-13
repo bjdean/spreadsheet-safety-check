@@ -1,40 +1,27 @@
-#!/usr/bin/env python3
-"""
-Macro Checker - Detect and analyze macros/code in spreadsheets
+"""Core macro checking functionality."""
 
-This script:
-1. Opens spreadsheets (Excel: .xlsx, .xlsm; OpenOffice: .ods)
-2. Detects cells with macros/code and VBA macros
-3. Uses Claude SDK to analyze each found macro/code and score 1-10
-   (1 = malicious, 10 = safe)
-4. Builds a markdown report describing findings
-5. Creates a copy of the input spreadsheet with suspicious cells highlighted
-"""
-
-import argparse
-import sys
-import os
-from pathlib import Path
-from datetime import datetime
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 from typing import List, Optional, Tuple
 
-import anyio
-from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock
+from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, query
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
 from openpyxl.utils import get_column_letter
 
 try:
     from oletools.olevba import VBA_Parser
+
     HAS_OLETOOLS = True
 except ImportError:
     HAS_OLETOOLS = False
 
 try:
     from odf.opendocument import load as load_odf
-    from odf.table import Table, TableRow, TableCell
+    from odf.table import Table, TableCell, TableRow
     from odf.text import P
+
     HAS_ODFPY = True
 except ImportError:
     HAS_ODFPY = False
@@ -42,17 +29,20 @@ except ImportError:
 
 @dataclass
 class MacroFinding:
-    """Represents a discovered macro or suspicious code"""
+    """Represents a discovered macro or suspicious code."""
+
     item_number: int
     location: str  # e.g., "Sheet1!A1" or "VBA Module: Module1"
     code: str
     score: int  # 1-10, where 1=malicious, 10=safe
     analysis: str
-    cell_reference: Optional[Tuple[str, str, int]] = None  # (sheet_name, column_letter, row)
+    cell_reference: Optional[Tuple[str, str, int]] = (
+        None  # (sheet_name, column_letter, row)
+    )
 
 
 class MacroChecker:
-    """Main class for checking macros in spreadsheet files"""
+    """Main class for checking macros in spreadsheet files."""
 
     def __init__(self, input_file: str, remove_threshold: int = 5):
         self.input_file = Path(input_file)
@@ -64,20 +54,20 @@ class MacroChecker:
         self.file_type = None  # 'excel' or 'ods'
 
     def load_spreadsheet(self):
-        """Load the spreadsheet (Excel or OpenOffice)"""
+        """Load the spreadsheet (Excel or OpenOffice)."""
         try:
             suffix = self.input_file.suffix.lower()
 
-            if suffix in ['.xlsx', '.xlsm']:
-                self.file_type = 'excel'
+            if suffix in [".xlsx", ".xlsm"]:
+                self.file_type = "excel"
                 self.workbook = load_workbook(self.input_file, data_only=False)
                 print(f"Loaded Excel spreadsheet: {self.input_file}")
                 return True
-            elif suffix == '.ods':
+            elif suffix == ".ods":
                 if not HAS_ODFPY:
                     print("Error: odfpy not installed. Install with: pip install odfpy")
                     return False
-                self.file_type = 'ods'
+                self.file_type = "ods"
                 self.ods_doc = load_odf(str(self.input_file))
                 print(f"Loaded OpenOffice spreadsheet: {self.input_file}")
                 return True
@@ -90,7 +80,7 @@ class MacroChecker:
             return False
 
     def detect_vba_macros(self) -> List[Tuple[str, str]]:
-        """Detect VBA macros in the spreadsheet"""
+        """Detect VBA macros in the spreadsheet."""
         macros = []
 
         if not HAS_OLETOOLS:
@@ -104,7 +94,12 @@ class MacroChecker:
             if vba_parser.detect_vba_macros():
                 print("VBA macros detected!")
 
-                for (filename, stream_path, vba_filename, vba_code) in vba_parser.extract_macros():
+                for (
+                    _filename,
+                    _stream_path,
+                    vba_filename,
+                    vba_code,
+                ) in vba_parser.extract_macros():
                     if vba_code:
                         location = f"VBA Module: {vba_filename}"
                         macros.append((location, vba_code))
@@ -116,18 +111,18 @@ class MacroChecker:
         return macros
 
     def detect_formula_cells(self) -> List[Tuple[str, str, str, int]]:
-        """Detect cells with formulas (Excel and ODS)"""
+        """Detect cells with formulas (Excel and ODS)."""
         formula_cells = []
 
-        if self.file_type == 'excel':
+        if self.file_type == "excel":
             return self._detect_excel_formulas()
-        elif self.file_type == 'ods':
+        elif self.file_type == "ods":
             return self._detect_ods_formulas()
 
         return formula_cells
 
     def _detect_excel_formulas(self) -> List[Tuple[str, str, str, int]]:
-        """Detect formulas in Excel spreadsheets"""
+        """Detect formulas in Excel spreadsheets."""
         formula_cells = []
 
         for sheet_name in self.workbook.sheetnames:
@@ -135,16 +130,21 @@ class MacroChecker:
 
             for row in sheet.iter_rows():
                 for cell in row:
-                    if cell.value and isinstance(cell.value, str) and cell.value.startswith('='):
+                    if (
+                        cell.value
+                        and isinstance(cell.value, str)
+                        and cell.value.startswith("=")
+                    ):
                         formula = cell.value
                         location = f"{sheet_name}!{cell.coordinate}"
-                        col_letter = get_column_letter(cell.column)
-                        formula_cells.append((location, formula, sheet_name, cell.column, cell.row))
+                        formula_cells.append(
+                            (location, formula, sheet_name, cell.column, cell.row)
+                        )
 
         return formula_cells
 
     def _detect_ods_formulas(self) -> List[Tuple[str, str, str, int]]:
-        """Detect formulas in OpenOffice spreadsheets"""
+        """Detect formulas in OpenOffice spreadsheets."""
         formula_cells = []
 
         tables = self.ods_doc.spreadsheet.getElementsByType(Table)
@@ -175,19 +175,22 @@ class MacroChecker:
                             pass
 
                     # Get formula
-                    formula = cell.getAttribute('formula')
+                    formula = cell.getAttribute("formula")
 
                     if formula:
                         # Convert column number to letter
                         col_letter = get_column_letter(col_num)
                         location = f"{sheet_name}!{col_letter}{row_num}"
-                        formula_cells.append((location, formula, sheet_name, col_num, row_num))
+                        formula_cells.append(
+                            (location, formula, sheet_name, col_num, row_num)
+                        )
 
         return formula_cells
 
-    async def analyze_code_with_claude(self, code: str, location: str) -> Tuple[int, str]:
-        """
-        Use Claude SDK to analyze code and return a score and analysis
+    async def analyze_code_with_claude(
+        self, code: str, location: str
+    ) -> Tuple[int, str]:
+        """Use Claude SDK to analyze code and return a score and analysis.
 
         Returns:
             Tuple of (score: int 1-10, analysis: str)
@@ -217,7 +220,7 @@ ANALYSIS: <your analysis here>
 
         options = ClaudeAgentOptions(
             max_turns=1,
-            system_prompt="You are a security analyst specializing in spreadsheet macro and formula analysis. Be concise and precise."
+            system_prompt="You are a security analyst specializing in spreadsheet macro and formula analysis. Be concise and precise.",
         )
 
         score = 5  # default
@@ -231,20 +234,20 @@ ANALYSIS: <your analysis here>
                             text = block.text
 
                             # Parse score and analysis
-                            lines = text.strip().split('\n')
+                            lines = text.strip().split("\n")
                             for line in lines:
-                                if line.startswith('SCORE:'):
+                                if line.startswith("SCORE:"):
                                     try:
-                                        score = int(line.replace('SCORE:', '').strip())
+                                        score = int(line.replace("SCORE:", "").strip())
                                         score = max(1, min(10, score))  # Clamp to 1-10
                                     except ValueError:
                                         pass
-                                elif line.startswith('ANALYSIS:'):
-                                    analysis = line.replace('ANALYSIS:', '').strip()
+                                elif line.startswith("ANALYSIS:"):
+                                    analysis = line.replace("ANALYSIS:", "").strip()
 
                             # If analysis wasn't on same line, get remaining text
-                            if analysis == "Unable to analyze" and 'ANALYSIS:' in text:
-                                analysis = text.split('ANALYSIS:')[1].strip()
+                            if analysis == "Unable to analyze" and "ANALYSIS:" in text:
+                                analysis = text.split("ANALYSIS:")[1].strip()
 
         except Exception as e:
             print(f"Error analyzing with Claude: {e}")
@@ -253,7 +256,7 @@ ANALYSIS: <your analysis here>
         return score, analysis
 
     async def scan_file(self):
-        """Main scanning function"""
+        """Main scanning function."""
         if not self.load_spreadsheet():
             return False
 
@@ -274,7 +277,7 @@ ANALYSIS: <your analysis here>
                 location=location,
                 code=code,
                 score=score,
-                analysis=analysis
+                analysis=analysis,
             )
             self.findings.append(finding)
             print(f"  Score: {score}/10")
@@ -296,7 +299,7 @@ ANALYSIS: <your analysis here>
                 code=formula,
                 score=score,
                 analysis=analysis,
-                cell_reference=(sheet_name, col_letter, row)
+                cell_reference=(sheet_name, col_letter, row),
             )
             self.findings.append(finding)
             print(f"  Score: {score}/10")
@@ -305,7 +308,7 @@ ANALYSIS: <your analysis here>
         return True
 
     def generate_markdown_report(self) -> str:
-        """Generate a markdown report of findings"""
+        """Generate a markdown report of findings."""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         report = f"""# Macro Security Analysis Report
@@ -330,7 +333,9 @@ ANALYSIS: <your analysis here>
         report += f"- **Potentially Risky (7-9):** {risky}\n"
         report += f"- **Safe (10):** {safe}\n"
         report += f"- **Items to be removed (score < {self.remove_threshold}):** "
-        report += f"{len([f for f in self.findings if f.score < self.remove_threshold])}\n\n"
+        report += (
+            f"{len([f for f in self.findings if f.score < self.remove_threshold])}\n\n"
+        )
 
         # Detailed findings
         report += "## Detailed Findings\n\n"
@@ -348,21 +353,23 @@ ANALYSIS: <your analysis here>
         return report
 
     def create_sanitized_copy(self, output_file: Path):
-        """Create a copy of the spreadsheet with suspicious cells highlighted/removed"""
-        if self.file_type == 'excel':
+        """Create a copy of the spreadsheet with suspicious cells highlighted/removed."""
+        if self.file_type == "excel":
             return self._create_sanitized_excel(output_file)
-        elif self.file_type == 'ods':
+        elif self.file_type == "ods":
             return self._create_sanitized_ods(output_file)
         return False
 
     def _create_sanitized_excel(self, output_file: Path):
-        """Create sanitized copy of Excel file"""
+        """Create sanitized copy of Excel file."""
         try:
             # Create a copy of the workbook
             output_wb = load_workbook(self.input_file)
 
             # Yellow fill for highlighted cells
-            yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+            yellow_fill = PatternFill(
+                start_color="FFFF00", end_color="FFFF00", fill_type="solid"
+            )
 
             items_removed = 0
 
@@ -389,12 +396,12 @@ ANALYSIS: <your analysis here>
             return False
 
     def _create_sanitized_ods(self, output_file: Path):
-        """Create sanitized copy of ODS file"""
+        """Create sanitized copy of ODS file."""
         try:
             # Import needed for creating ODS elements
-            from odf.style import Style, TableCellProperties
-            from odf.opendocument import OpenDocumentSpreadsheet
             import shutil
+
+            from odf.style import Style, TableCellProperties
 
             # Copy the original file
             shutil.copy2(self.input_file, output_file)
@@ -417,7 +424,9 @@ ANALYSIS: <your analysis here>
                     key = (sheet_name, row)
                     if key not in cells_to_sanitize:
                         cells_to_sanitize[key] = []
-                    cells_to_sanitize[key].append((finding.cell_reference[1], finding.item_number))
+                    cells_to_sanitize[key].append(
+                        (finding.cell_reference[1], finding.item_number)
+                    )
 
             # Process tables
             tables = output_doc.spreadsheet.getElementsByType(Table)
@@ -427,12 +436,12 @@ ANALYSIS: <your analysis here>
 
                 row_num = 0
                 for row in rows:
-                    row_num += 1
+                    row_num += 1  # noqa: SIM113 - spreadsheet rows start at 1
                     cells = row.getElementsByType(TableCell)
 
                     col_num = 0
                     for cell in cells:
-                        col_num += 1
+                        col_num += 1  # noqa: SIM113 - spreadsheet cols start at 1
 
                         # Check if this cell should be sanitized
                         key = (sheet_name, row_num)
@@ -441,7 +450,7 @@ ANALYSIS: <your analysis here>
                             for target_col, item_num in cells_to_sanitize[key]:
                                 if col_letter == target_col:
                                     # Remove formula
-                                    cell.removeAttribute('formula')
+                                    cell.removeAttribute("formula")
 
                                     # Set text content
                                     # Remove existing text
@@ -450,12 +459,13 @@ ANALYSIS: <your analysis here>
 
                                     # Add new text
                                     from odf.text import P as Paragraph
+
                                     p = Paragraph()
                                     p.addText(f"CODE REMOVED: Item #{item_num}")
                                     cell.addElement(p)
 
                                     # Apply yellow style
-                                    cell.setAttribute('stylename', yellow_style)
+                                    cell.setAttribute("stylename", yellow_style)
                                     items_removed += 1
 
             # Save the sanitized copy
@@ -468,73 +478,6 @@ ANALYSIS: <your analysis here>
         except Exception as e:
             print(f"Error creating sanitized ODS copy: {e}")
             import traceback
+
             traceback.print_exc()
             return False
-
-
-async def main():
-    parser = argparse.ArgumentParser(
-        description="Detect and analyze macros/code in spreadsheets (Excel and OpenOffice)"
-    )
-    parser.add_argument(
-        "input_file",
-        help="Path to the spreadsheet to analyze (.xlsx, .xlsm, .ods)"
-    )
-    parser.add_argument(
-        "--remove-threshold",
-        type=int,
-        default=5,
-        help="Score threshold for removing code (default: 5, removes items with score < 5)"
-    )
-    parser.add_argument(
-        "--output-dir",
-        help="Directory for output files (default: same as input file)"
-    )
-
-    args = parser.parse_args()
-
-    # Validate input file
-    input_path = Path(args.input_file)
-    if not input_path.exists():
-        print(f"Error: Input file not found: {input_path}")
-        sys.exit(1)
-
-    if input_path.suffix.lower() not in ['.xlsx', '.xlsm', '.ods']:
-        print(f"Error: Unsupported file format. Use .xlsx, .xlsm, or .ods files")
-        sys.exit(1)
-
-    # Determine output directory
-    if args.output_dir:
-        output_dir = Path(args.output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-    else:
-        output_dir = input_path.parent
-
-    # Create checker instance
-    checker = MacroChecker(input_path, args.remove_threshold)
-
-    # Scan the file
-    success = await checker.scan_file()
-
-    if not success:
-        print("Scanning failed")
-        sys.exit(1)
-
-    # Generate report
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    report_file = output_dir / f"{input_path.stem}_report_{timestamp}.md"
-
-    report_content = checker.generate_markdown_report()
-    report_file.write_text(report_content)
-
-    print(f"\nReport saved to: {report_file}")
-
-    # Create sanitized copy
-    sanitized_file = output_dir / f"{input_path.stem}_sanitized_{timestamp}{input_path.suffix}"
-    checker.create_sanitized_copy(sanitized_file)
-
-    print("\n=== Analysis Complete ===")
-
-
-if __name__ == '__main__':
-    anyio.run(main)
