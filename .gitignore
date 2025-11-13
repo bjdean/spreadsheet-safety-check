@@ -137,8 +137,3 @@ dmypy.json
 *.xls
 *_report_*.md
 *_sanitized_*
-
-# Keep example files if any
-!examples/*.xlsx
-!examples/*.xlsm
-!examples/*.ods
